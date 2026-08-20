@@ -282,10 +282,16 @@ void UGMC_AbilitySystemComponent::GenAncillaryTick(float DeltaTime, bool bIsComb
 		//   so the call was a no-op there.
 		// - Listen server local pawn: empty queue → was setting OperationData to
 		//   empty base, destroying the deferred ability payload (the bug).
-		// - Server-side ClientQueuedOperations cannot be populated (all 4 callers
-		//   gated by !HasAuthority(), and RPCOnServerOperationAdded is Client-RPC).
-		//   CheckValidState (line 178 of GMASBoundQueueV2.cpp) already logs an
-		//   Error if it ever happens -- the drain was idempotent defensive code.
+		// - Server-side ClientQueuedOperations: this note previously claimed it "cannot be
+		//   populated (all 4 callers gated by !HasAuthority(), and RPCOnServerOperationAdded
+		//   is Client-RPC)". THAT WAS WRONG, and believing it hid a real bug for months. A
+		//   Client RPC aimed at the host's own connection resolves to Local callspace, so
+		//   RPCOnServerOperationAdded ran on the SERVER for a listen-server local pawn and
+		//   pushed server-broadcast IDs into ClientQueuedOperations — producing a batch that
+		//   double-applied and then logged "[BatchOp] ... payload missing from cache" with
+		//   Authority=1. CheckValidState was correctly reporting it the whole time. Fixed by
+		//   the HasAuthority() guard in RPCOnServerOperationAdded_Implementation; the
+		//   CheckValidState Error is now a genuine canary rather than expected noise.
 		ProcessOperation(BoundQueueV2.OperationData, false);
 	}
 	else
@@ -1111,7 +1117,38 @@ void UGMC_AbilitySystemComponent::PreLocalMoveExecution()
 
 void UGMC_AbilitySystemComponent::RPCOnServerOperationAdded_Implementation(const int OperationID, const FInstancedStruct Operation)
 {
-	UE_LOG(LogTemp, Warning, TEXT("RPCOnServerOperationAdded: %d"), OperationID);
+	UE_LOG(LogGMCAbilitySystem, Verbose, TEXT("RPCOnServerOperationAdded: %d"), OperationID);
+
+	// AUTHORITY REACHES HERE, despite this being a Client RPC. QueueServerOperation
+	// broadcasts OnServerOperationAdded, this function is bound to it, and UE resolves a
+	// Client RPC aimed at the host's own connection to Local callspace — so on a listen
+	// server (and in standalone) this body runs on the SERVER for a locally-controlled pawn.
+	//
+	// The client bookkeeping below must not run there. It pushed server-broadcast IDs into
+	// ClientQueuedOperations; GenPreLocalMoveExecution (whose guard includes
+	// IsLocallyControlledListenServerPawn) then drained them into a batch, the batch applied
+	// the ops and wrote a BatchAcknowledgeOperation, and ServerProcessAcknowledgedOperation
+	// applied the SAME payloads a second time before clearing them — after which any
+	// surviving reference to that batch logged "[BatchOp] Sub-operation N payload missing
+	// from cache" with Authority=1. CheckValidState's "ClientQueuedOperations has N pending
+	// operations on server" is the same bug caught one step earlier; the comment at the
+	// GenAncillaryTick ProcessOperation call claiming this cannot happen predates it.
+	if (HasAuthority())
+	{
+		// MakeOperationData already cached the payload, and our own pawn has no remote
+		// client to acknowledge it. Hand it straight to the existing grace-timeout drain by
+		// expiring the grace period: GenAncillaryTick force-applies it on the next tick
+		// (ProcessOperation with bForce) and clears the payload. Reusing that path instead
+		// of applying inline is deliberate — QueueServerOperation is broadcast from inside
+		// ApplyAbilityEffect, so a nested apply here could re-enter ActiveEffects while a
+		// caller is mid-iteration.
+		if (float* GracePeriod = BoundQueueV2.ServerQueuedBoundOperationsGracePeriods.Find(OperationID))
+		{
+			*GracePeriod = 0.f;
+		}
+		return;
+	}
+
 	BoundQueueV2.CacheOperationPayload(OperationID, Operation);
 	BoundQueueV2.ClientQueuedOperations.Add(OperationID);
 }
