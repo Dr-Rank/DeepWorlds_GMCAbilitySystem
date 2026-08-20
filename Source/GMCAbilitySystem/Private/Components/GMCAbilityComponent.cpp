@@ -756,6 +756,42 @@ void UGMC_AbilitySystemComponent::QueueAbility(FGameplayTag InputTag, const UInp
 
 	// Detect client-auth path before standard routing.
 	TArray<TSubclassOf<UGMCAbility>> Candidates = GetGrantedAbilitiesByTag(InputTag);
+
+	// bPreventConcurrentActivation was declared, documented and exposed to Blueprint, but never
+	// read -- so callers asking for it silently got nothing. Implementing it here rather than
+	// working around it per-caller, because the flag's stated purpose ("the check is made locally
+	// reducing server charge") is exactly what is needed.
+	//
+	// Why it matters, concretely: an Enhanced Input action with no explicit trigger fires
+	// Triggered EVERY FRAME while held, so a held key calls this once per frame. TryActivateAbility
+	// already rejects the duplicate at the "Already Instanced" check -- but only AFTER the
+	// operation has taken a slot in ClientQueuedOperations. On a remote client every activation is
+	// a negative ID, which forces GenPreLocalMoveExecution down the single-op path where exactly
+	// ONE operation drains per movement tick via Pop() -- LIFO. A newer duplicate is therefore
+	// always on top, and any operation queued once (a reload, a weapon swap) starves until the key
+	// is released. Measured on CLEAR: 294 sprint activations in 3.4s, with reload absent from the
+	// log for that entire window and processed 8ms after the last one.
+	//
+	// Rejecting here costs nothing that was not already rejected -- it only stops the queue slot
+	// being spent. bAllowMultipleInstances is honoured so abilities that legitimately stack are
+	// untouched, and the parameter still defaults to false, so no existing caller changes.
+	if (bPreventConcurrentActivation)
+	{
+		for (const TSubclassOf<UGMCAbility>& AbilityClass : Candidates)
+		{
+			if (!AbilityClass) continue;
+
+			const UGMCAbility* AbilityCDO = AbilityClass->GetDefaultObject<UGMCAbility>();
+			if (AbilityCDO && !AbilityCDO->bAllowMultipleInstances && GetActiveAbilityCount(AbilityClass) > 0)
+			{
+				UE_LOG(LogGMCAbilitySystem, VeryVerbose,
+					TEXT("QueueAbility for %s skipped: already active and bPreventConcurrentActivation is set."),
+					*GetNameSafe(AbilityClass));
+				return;
+			}
+		}
+	}
+
 	for (const TSubclassOf<UGMCAbility>& AbilityClass : Candidates)
 	{
 		if (!AbilityClass) continue;
