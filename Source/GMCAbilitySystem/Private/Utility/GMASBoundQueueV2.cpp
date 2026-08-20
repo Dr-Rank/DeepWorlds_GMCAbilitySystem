@@ -42,22 +42,40 @@ bool FGMASBoundQueueV2::IsValidClientOperation(const FInstancedStruct& Data) con
 
 void FGMASBoundQueueV2::ClearStaleOperationData()
 {
-	const int MaximumFreshMoveIndex = GMCMoveCounter - GMCMovementComponent->MoveHistoryMaxSize;
+	const int64 MaximumFreshMoveIndex = GMCMoveCounter - GMCMovementComponent->MoveHistoryMaxSize;
 	for (auto It = OperationDataCacheExpiration.CreateIterator(); It; ++It)
 	{
-		const int64 MoveAddedAt = It->ModeAddedAt;
-		if (MoveAddedAt < MaximumFreshMoveIndex)
+		if (It->ModeAddedAt >= MaximumFreshMoveIndex) continue;
+
+		const int OperationID = It->OperationID;
+
+		// A payload that is no longer cached was already consumed — acknowledged via
+		// ServerAcknowledgeOperation, or force-applied when its grace period expired. Both
+		// clear OperationPayloads and neither touches this array, so the bookkeeping entry
+		// MUST be dropped here or it lives for the lifetime of the process.
+		//
+		// This used to log a Warning and `continue` WITHOUT RemoveCurrent, so every
+		// consumed operation leaked an entry and then re-warned on every subsequent tick
+		// once it aged out. Consumed-then-expired is the normal path, not an anomaly.
+		if (!OperationPayloads.Contains(OperationID))
 		{
-			const int OperationID = It->OperationID;
-			if (!OperationPayloads.Contains(OperationID))
-			{
-				UE_LOG(LogGMCAbilitySystem, Warning, TEXT("OperationID %d not found in OperationPayloads, but still in cache expiration map"), OperationID);
-				continue;
-			}
-			// Remove stale operation data
-			OperationPayloads.Remove(OperationID);
 			It.RemoveCurrent();
+			continue;
 		}
+
+		// Still awaiting the owning client's acknowledgement. Dropping the payload now
+		// would strand it rather than merely delay it: GenAncillaryTick's grace-timeout
+		// drain tests OperationPayloads.Contains before forcing, so the operation would be
+		// silently lost. MoveHistoryMaxSize defaults to 256 (~4s at 60Hz), comfortably
+		// clear of the 1s default grace — but it is EditAnywhere with ClampMin 8 (~0.13s),
+		// so the two windows can invert on a project that lowers it.
+		if (ServerQueuedBoundOperationsGracePeriods.Contains(OperationID))
+		{
+			continue;
+		}
+
+		OperationPayloads.Remove(OperationID);
+		It.RemoveCurrent();
 	}
 }
 
@@ -159,12 +177,16 @@ void FGMASBoundQueueV2::GenAncillaryTick(const float DeltaTime)
 {
 	CheckValidState();
 
-	if (GMCMovementComponent->GetNetMode() >= NM_Client)
-	{
-		GMCMoveCounter++;
-		ClearStaleOperationData();
-	}
-	
+	// Runs on EVERY role, not just NM_Client. ENetMode orders Standalone(0),
+	// DedicatedServer(1), ListenServer(2), Client(3), so the previous ">= NM_Client" test
+	// meant the prune never ran on any server or in standalone — yet servers cache a
+	// payload per operation via MakeOperationData/CacheOperationPayload, and every one of
+	// them appends to OperationDataCacheExpiration. That array therefore grew by one entry
+	// per operation for the lifetime of the process (thousands over a match of sustained
+	// fire) with nothing able to prune it.
+	GMCMoveCounter++;
+	ClearStaleOperationData();
+
 	// Tick all Server Queued Operations
 	for (auto It = ServerQueuedBoundOperationsGracePeriods.CreateIterator(); It; ++It)
 	{
