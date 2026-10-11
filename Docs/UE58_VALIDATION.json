@@ -51,7 +51,7 @@
     "Owner-backed components retain and coalesce early QueueAbility requests until the first finite positive prediction timestamp; direct TryActivateAbility refuses before readiness.",
     "Preview collision fixtures finish queued static-mesh compilation and create physics state before immediate sweeps. No traversal gameplay or collision thresholds changed."
   ],
-  "startup_limitations": "Actor-owned automated regressions passed. Native listen-server/client first-spawn qualification remains part of the wider GMC gameplay work.",
+  "startup_limitations": "Native listen-server/client startup input queue qualified with normal networking and 100 ms RTT/1% loss. This does not certify every customer ability graph, reconnect/respawn policy, packaged server, or the wider Traverse Anywhere GMC gameplay setup.",
   "remaining_qualification": [
     "GMC setup/import generation",
     "Native multiplayer and visible contact",
