@@ -43,38 +43,15 @@ bool FGMASBoundQueueV2::IsValidClientOperation(const FInstancedStruct& Data) con
 void FGMASBoundQueueV2::ClearStaleOperationData()
 {
 	const int64 MaximumFreshMoveIndex = GMCMoveCounter - GMCMovementComponent->MoveHistoryMaxSize;
+	const bool bServer = GMCMovementComponent->GetNetMode() < NM_Client;
 	for (auto It = OperationDataCacheExpiration.CreateIterator(); It; ++It)
 	{
-		if (It->ModeAddedAt >= MaximumFreshMoveIndex) continue;
-
-		const int OperationID = It->OperationID;
-
-		// A payload that is no longer cached was already consumed — acknowledged via
-		// ServerAcknowledgeOperation, or force-applied when its grace period expired. Both
-		// clear OperationPayloads and neither touches this array, so the bookkeeping entry
-		// MUST be dropped here or it lives for the lifetime of the process.
-		//
-		// This used to log a Warning and `continue` WITHOUT RemoveCurrent, so every
-		// consumed operation leaked an entry and then re-warned on every subsequent tick
-		// once it aged out. Consumed-then-expired is the normal path, not an anomaly.
-		if (!OperationPayloads.Contains(OperationID))
-		{
-			It.RemoveCurrent();
-			continue;
-		}
-
-		// Still awaiting the owning client's acknowledgement. Dropping the payload now
-		// would strand it rather than merely delay it: GenAncillaryTick's grace-timeout
-		// drain tests OperationPayloads.Contains before forcing, so the operation would be
-		// silently lost. MoveHistoryMaxSize defaults to 256 (~4s at 60Hz), comfortably
-		// clear of the 1s default grace — but it is EditAnywhere with ClampMin 8 (~0.13s),
-		// so the two windows can invert on a project that lowers it.
-		if (ServerQueuedBoundOperationsGracePeriods.Contains(OperationID))
+		// The server keeps a payload until its client acks it or the grace period forces it.
+		if (It.Value() >= MaximumFreshMoveIndex || (bServer && ServerQueuedBoundOperationsGracePeriods.Contains(It.Key())))
 		{
 			continue;
 		}
-
-		OperationPayloads.Remove(OperationID);
+		OperationPayloads.Remove(It.Key());
 		It.RemoveCurrent();
 	}
 }
@@ -140,9 +117,19 @@ void FGMASBoundQueueV2::GenPreLocalMoveExecution()
 			// passes on the receiving end -- sending only the base struct
 			// causes the op to be silently dropped server-side.
 			const int OperationIDToProcess = ClientQueuedOperations.Pop();
-			OperationData = OperationPayloads.Contains(OperationIDToProcess)
-				? OperationPayloads[OperationIDToProcess]
-				: FInstancedStruct::Make<FGMASBoundQueueV2OperationBaseData>();
+			if (const FInstancedStruct* Payload = OperationPayloads.Find(OperationIDToProcess))
+			{
+				OperationData = *Payload;
+			}
+			else
+			{
+				// ClearStaleOperationData expired the payload before the queue drained it. The op
+				// ships as an empty base struct, so the server discards it and the input is lost.
+				UE_LOG(LogGMCAbilitySystem, Warning,
+					TEXT("Dropped client operation %d: payload expired after %d moves (queue depth %d, move %lld). The activation never reaches the server."),
+					OperationIDToProcess, GMCMovementComponent->MoveHistoryMaxSize, ClientQueuedOperations.Num(), GMCMoveCounter);
+				OperationData = FInstancedStruct::Make<FGMASBoundQueueV2OperationBaseData>();
+			}
 			return;
 		}
 
@@ -159,6 +146,12 @@ void FGMASBoundQueueV2::GenPreLocalMoveExecution()
 			if (OperationPayloads.Contains(OpID))
 			{
 				Batch.SubOperationIDs.Add(OpID);
+			}
+			else
+			{
+				UE_LOG(LogGMCAbilitySystem, Warning,
+					TEXT("Dropped batched operation %d: payload expired after %d moves (move %lld)."),
+					OpID, GMCMovementComponent->MoveHistoryMaxSize, GMCMoveCounter);
 			}
 		}
 		ClientQueuedOperations.Reset();
@@ -177,13 +170,7 @@ void FGMASBoundQueueV2::GenAncillaryTick(const float DeltaTime)
 {
 	CheckValidState();
 
-	// Runs on EVERY role, not just NM_Client. ENetMode orders Standalone(0),
-	// DedicatedServer(1), ListenServer(2), Client(3), so the previous ">= NM_Client" test
-	// meant the prune never ran on any server or in standalone — yet servers cache a
-	// payload per operation via MakeOperationData/CacheOperationPayload, and every one of
-	// them appends to OperationDataCacheExpiration. That array therefore grew by one entry
-	// per operation for the lifetime of the process (thousands over a match of sustained
-	// fire) with nothing able to prune it.
+	// On the server too: the server caches every operation it makes, and nothing else expires them.
 	GMCMoveCounter++;
 	ClearStaleOperationData();
 
@@ -191,13 +178,13 @@ void FGMASBoundQueueV2::GenAncillaryTick(const float DeltaTime)
 	for (auto It = ServerQueuedBoundOperationsGracePeriods.CreateIterator(); It; ++It)
 	{
 		It.Value() -= DeltaTime;
-		
-		if (It.Value() <= 0) 
+
+		if (It.Value() <= 0)
 		{
 			if (OperationPayloads.Contains(It.Key()))
 			{
 				OnServerOperationForced.Broadcast(OperationPayloads[It.Key()]);
-				OperationPayloads.Remove(It.Key());
+				RemovePayloadByID(It.Key());
 			}
 			It.RemoveCurrent();
 		}
@@ -207,7 +194,7 @@ void FGMASBoundQueueV2::GenAncillaryTick(const float DeltaTime)
 void FGMASBoundQueueV2::CacheOperationPayload(const int OperationID, const FInstancedStruct& Payload)
 {
 	OperationPayloads.Add(OperationID, Payload);
-	OperationDataCacheExpiration.Add({OperationID, GMCMoveCounter});
+	OperationDataCacheExpiration.Add(OperationID, GMCMoveCounter);
 }
 
 void FGMASBoundQueueV2::QueueClientOperation(const int OperationID)
@@ -234,11 +221,8 @@ void FGMASBoundQueueV2::QueueServerOperation(const int OperationID, const float 
 
 void FGMASBoundQueueV2::ServerAcknowledgeOperation(int ID)
 {
-	if (OperationPayloads.Contains(ID))
-	{
-		OperationPayloads.Remove(ID);
-	}
-	
+	RemovePayloadByID(ID);
+
 	if (ServerQueuedBoundOperationsGracePeriods.Contains(ID))
 	{
 		ServerQueuedBoundOperationsGracePeriods.Remove(ID);
@@ -250,8 +234,9 @@ void FGMASBoundQueueV2::CheckValidState() const
 	// Server Logic
 	if (GMCMovementComponent->GetNetMode() < NM_Client)
 	{
-		// Check Client Queued Operations is empty
-		if (ClientQueuedOperations.Num() > 0)
+		// Check Client Queued Operations is empty. A pawn with no remote owner (AI, listen-server host) queues
+		// to itself through the local RPCOnServerOperationAdded: its next move drains it.
+		if (ClientQueuedOperations.Num() > 0 && !GMCMovementComponent->IsLocallyControlledServerPawn())
 		{
 			UE_LOG(LogGMCAbilitySystem, Error, TEXT("ClientQueuedOperations has %d pending operations on server"), ClientQueuedOperations.Num());
 		}

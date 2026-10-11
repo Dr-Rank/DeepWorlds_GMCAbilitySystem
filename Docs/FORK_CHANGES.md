@@ -1,3 +1,5 @@
+> **Historical record retained on 11 October 2026.** The refresh incorporates DeepWorlds dev through 946dac57. Upstream now covers the four original fork patches; review current test and gameplay evidence before relying on the older conclusions below.
+
 # Fork changes
 
 Every change this fork makes to the upstream plugin, with the evidence that identified it and a
