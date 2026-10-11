@@ -177,5 +177,10 @@
     "Automated editor checks only; visible contact, native multiplayer and packaged GMC gameplay not certified",
     "150 GMAS failures and 1 traversal failure also occurred before this upstream refresh",
     "Raw build and test logs retained in the working evidence pack"
-  ]
+  ],
+  "diagnosis": {
+    "attribute_fixtures": "Old fixtures assume default [0,0] means no clamp. Current bClampMin/bClampMax default true, so leaving the defaults clamps to zero. Attribute arithmetic, modifier and replay failures are being assessed against these updated semantics.",
+    "cooldown_fixtures": "Three tests call GenAncillaryTick with DeltaTime expecting countdown subtraction. Current cooldowns store absolute ActionTimer expiry, and ticking without advancing the movement clock does not expire them.",
+    "traversal_isolation": "All 13 Traversal.Action.CheckResult cases pass in a fresh isolated run; the full suite fails one inset-proxy case. Earlier-test shared-state interference is suspected; the responsible test is not yet identified."
+  }
 }
