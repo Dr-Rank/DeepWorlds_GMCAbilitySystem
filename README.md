@@ -21,8 +21,13 @@ and creates collision before tracing; traversal gameplay behavior is unchanged.
 positive GMC prediction timestamp. Repeated held input for the same tag is coalesced while preserving
 request order. No activation IDs, cooldowns or ability instances are created during that wait.
 Direct `TryActivateAbility` calls return `false` before readiness, so callers should retry or use `QueueAbility`.
-Actor-owned startup regression tests and cooldown replay checks pass. A native listen-server/client
-first-spawn check is still required before treating that network edge case as fully qualified.
+Actor-owned startup regression tests and cooldown replay checks pass. The native listen-server/client
+startup check now passes in both normal networking and 100 ms round-trip lag with 1% loss each way.
+The host and remote owner each coalesce 32 zero-clock requests, activate once after clock readiness,
+then successfully activate again after cooldown. The client and server agree on operation IDs; no
+ability or cooldown remains stuck. No further runtime change was required.
+See [native evidence and limits](Docs/UE58_NATIVE_SPAWN_VALIDATION.json) and the
+[optional lab-only regression plugin](Tests/GMASNativeSpawnLab/README.md).
 
 The editor results do not certify Traverse Anywhere's unfinished GMC setup pipeline, native multiplayer,
 visible contact or packaged gameplay. Back up and test your own project.

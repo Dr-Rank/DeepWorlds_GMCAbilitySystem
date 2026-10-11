@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-11",
+  "engine": "Unreal Engine 5.8",
+  "host": "GMCv2_Demo",
+  "runtime_commit": "b8af0f6",
+  "runtime_changes_required": false,
+  "build": "native-spawn-lab-build.log: Succeeded",
+  "method": "Single native editor process; listen server and remote owning client in two PIE worlds; genuine GMC/GMCMotion move callbacks; no injected timestamps.",
+  "requests": "32 QueueAbility calls before the first GMAS prediction tick; ActionTimer=0; then one recovery request at native GMC timestamp >=2s.",
+  "cases": [
+    "GMASNative.ListenServer.SpawnClock.Lag100msLoss1pct",
+    "GMASNative.ListenServer.SpawnClock.Normal"
+  ],
+  "tests": {
+    "completed": 20,
+    "passed": 20,
+    "failed": 0,
+    "paths": [
+      "GMAS.Unit.Ability.Ability lifecycle.bAllowMultipleInstances=false blocks a second activation while the first is running",
+      "GMAS.Unit.Ability.Ability lifecycle.EndAbility sets state Ended; GenPredictionTick removes it from ActiveAbilities",
+      "GMAS.Unit.Ability.Ability lifecycle.successful activation: GetActiveAbilityCount increases and ability is Initialized",
+      "GMAS.Unit.Ability.Ability lifecycle.TryActivateAbility returns false for a null class",
+      "GMAS.Unit.Ability.Active tags.AddActiveTag makes HasActiveTag return true",
+      "GMAS.Unit.Ability.Active tags.HasActiveTag matches a child tag via hierarchy; HasActiveTagExact does not",
+      "GMAS.Unit.Ability.Active tags.RemoveActiveTag makes HasActiveTag return false",
+      "GMAS.Unit.Ability.Cooldown.bApplyCooldownAtAbilityBegin=true blocks re-activation while cooldown runs",
+      "GMAS.Unit.Ability.Cooldown.cooldown reads as expired once ActionTimer passes its expiry",
+      "GMAS.Unit.Ability.Cooldown.GetCooldownForAbility returns 0 for an unknown tag",
+      "GMAS.Unit.Ability.Cooldown.replayed ancillary ticks at the same prediction time do not shorten cooldown",
+      "GMAS.Unit.Ability.Cooldown.SetCooldownForAbility / GetCooldownForAbility round-trip",
+      "GMAS.Unit.Ability.Cooldown.the remaining cooldown falls as ActionTimer advances",
+      "GMAS.Unit.Ability.Granted abilities.GrantAbilityByTag makes HasGrantedAbilityTag return true",
+      "GMAS.Unit.Ability.Granted abilities.granting the same tag twice is idempotent",
+      "GMAS.Unit.Ability.Granted abilities.RemoveGrantedAbilityByTag makes HasGrantedAbilityTag return false",
+      "GMAS.Unit.Ability.Spawn clock readiness.early held input waits without allocating an operation and drains once",
+      "GMAS.Unit.Ability.Spawn clock readiness.non-finite and negative spawn clocks cannot activate an ability",
+      "GMASNative.ListenServer.SpawnClock.Lag100msLoss1pct",
+      "GMASNative.ListenServer.SpawnClock.Normal"
+    ]
+  },
+  "observations": [
+    "[2026.10.11-01.55.45:444][673]LogTemp: Display: [NativeSpawn] early pawn=GMASNativeSpawnPawn_0 role=3 clock=0.000000 deferred=1",
+    "[2026.10.11-01.55.45:454][674]LogTemp: Display: [NativeSpawn] begin pawn=GMASNativeSpawnPawn_0 role=3 local=1 id=16 clock=0.082187",
+    "[2026.10.11-01.55.45:927][728]LogTemp: Display: [NativeSpawn] early pawn=GMASNativeSpawnPawn_0 role=2 clock=0.000000 deferred=1",
+    "[2026.10.11-01.55.45:935][729]LogTemp: Display: [NativeSpawn] begin pawn=GMASNativeSpawnPawn_0 role=2 local=1 id=-16 clock=0.016919",
+    "[2026.10.11-01.55.46:014][739]LogTemp: Display: [NativeSpawn] begin pawn=GMASNativeSpawnPawn_1 role=3 local=0 id=-16 clock=0.016919",
+    "[2026.10.11-01.55.47:381][903]LogTemp: Display: [NativeSpawn] begin pawn=GMASNativeSpawnPawn_0 role=3 local=1 id=32 clock=2.013039",
+    "[2026.10.11-01.55.47:923][968]LogTemp: Display: [NativeSpawn] begin pawn=GMASNativeSpawnPawn_0 role=2 local=1 id=-32 clock=2.008749",
+    "[2026.10.11-01.55.48:014][979]LogTemp: Display: [NativeSpawn] begin pawn=GMASNativeSpawnPawn_1 role=3 local=0 id=-32 clock=2.008749",
+    "[2026.10.11-01.55.57:370][101]LogTemp: Display: [NativeSpawn] final pawn=GMASNativeSpawnPawn_0 role=3 local=1 clock=11.998683 begun=2 ended=2 active=0",
+    "[2026.10.11-01.55.57:370][101]LogTemp: Display: [NativeSpawn] final pawn=GMASNativeSpawnPawn_1 role=3 local=0 clock=11.352692 begun=2 ended=2 active=0",
+    "[2026.10.11-01.55.57:370][101]LogTemp: Display: [NativeSpawn] final pawn=GMASNativeSpawnPawn_0 role=2 local=1 clock=11.452693 begun=2 ended=2 active=0",
+    "[2026.10.11-01.55.57:521][105]LogTemp: Display: [NativeSpawn] early pawn=GMASNativeSpawnPawn_0 role=3 clock=0.000000 deferred=1",
+    "[2026.10.11-01.55.57:525][106]LogTemp: Display: [NativeSpawn] begin pawn=GMASNativeSpawnPawn_0 role=3 local=1 id=16 clock=0.055129",
+    "[2026.10.11-01.55.57:584][111]LogTemp: Display: [NativeSpawn] early pawn=GMASNativeSpawnPawn_0 role=2 clock=0.000000 deferred=1",
+    "[2026.10.11-01.55.57:592][112]LogTemp: Display: [NativeSpawn] begin pawn=GMASNativeSpawnPawn_0 role=2 local=1 id=-16 clock=0.016667",
+    "[2026.10.11-01.55.57:624][116]LogTemp: Display: [NativeSpawn] begin pawn=GMASNativeSpawnPawn_1 role=3 local=0 id=-16 clock=0.016667",
+    "[2026.10.11-01.55.59:482][339]LogTemp: Display: [NativeSpawn] begin pawn=GMASNativeSpawnPawn_0 role=3 local=1 id=32 clock=2.012936",
+    "[2026.10.11-01.55.59:584][351]LogTemp: Display: [NativeSpawn] begin pawn=GMASNativeSpawnPawn_0 role=2 local=1 id=-32 clock=2.008391",
+    "[2026.10.11-01.55.59:624][356]LogTemp: Display: [NativeSpawn] begin pawn=GMASNativeSpawnPawn_1 role=3 local=0 id=-32 clock=2.008391",
+    "[2026.10.11-01.56.09:469][537]LogTemp: Display: [NativeSpawn] final pawn=GMASNativeSpawnPawn_0 role=3 local=1 clock=11.997146 begun=2 ended=2 active=0",
+    "[2026.10.11-01.56.09:469][537]LogTemp: Display: [NativeSpawn] final pawn=GMASNativeSpawnPawn_1 role=3 local=0 clock=11.867599 begun=2 ended=2 active=0",
+    "[2026.10.11-01.56.09:469][537]LogTemp: Display: [NativeSpawn] final pawn=GMASNativeSpawnPawn_0 role=2 local=1 clock=11.892600 begun=2 ended=2 active=0"
+  ],
+  "assertions": [
+    "One deferred startup request per local pawn",
+    "All activations have positive native timestamps",
+    "Startup and recovery operation IDs agree between remote client and server",
+    "Exactly two distinct activations and two completed operations on host, client and server copy",
+    "No active ability or cooldown remains"
+  ],
+  "limitations": [
+    "Native startup input queue only, not every ability/task graph or respawn/reconnect policy",
+    "Headless PIE; no animation/contact/render validation",
+    "No packaged server validation",
+    "Traverse Anywhere GMC setup remains separately unqualified"
+  ],
+  "evidence": {
+    "archive": "UE58_NATIVE_SPAWN_EVIDENCE.zip",
+    "sha256": "2b8d05541f47f9392cf9444e7d831eb8eb83166248f4dac1749fe573f71c5510",
+    "final_log": "native-spawn-lab-final.log",
+    "final_log_sha256": "51270a01f83946ca0e36dfe520366032d7a79fea6942fb7c7db8ce52d6710ccc"
+  },
+  "fixture_sha256": {
+    "Tests/GMASNativeSpawnLab/GMASNativeSpawnLab.uplugin": "1c8884cfc914fafe4a6c9e5a7fdeb0c5620ad5f4a5a019044961536608b1d55b",
+    "Tests/GMASNativeSpawnLab/README.md": "aafadcfcb97e2f38187da3a7a423c00259fa82133df66361243a7b95ab75bc12",
+    "Tests/GMASNativeSpawnLab/Source/GMASNativeSpawnLabEditor/GMASNativeSpawnLabEditor.Build.cs": "7f0f1cfce6c627de4be1306bb7eabb9c59d8fab8cadb1129e3a0068856987976",
+    "Tests/GMASNativeSpawnLab/Source/GMASNativeSpawnLabEditor/Private/GMASNativeSpawnFixture.cpp": "9592edc664c7f9a31c3853851f885f0e9941cfd5beddb7601cac045a302491d9",
+    "Tests/GMASNativeSpawnLab/Source/GMASNativeSpawnLabEditor/Private/GMASNativeSpawnFixture.h": "3066dc8bd252eb2b84ed26fddcef981060f186e12c6d1579787c275e10df6f44",
+    "Tests/GMASNativeSpawnLab/Source/GMASNativeSpawnLabEditor/Private/GMASNativeSpawnLabEditor.cpp": "c578dfc0a3e8bc79ff6dc43224d27c6f08cd6623496a5c42b328131e30a8a2d0",
+    "Tests/GMASNativeSpawnLab/Source/GMASNativeSpawnLabEditor/Private/GMASNativeSpawnSpec.cpp": "5241e30a4bd38f4cc4cf37b407779db35ca126e237dcfcb23bafe9e6ea26c6a9",
+    "Tests/GMASNativeSpawnLab/Source/GMASNativeSpawnLabRuntime/GMASNativeSpawnLabRuntime.Build.cs": "6cfb309797fc7a895aa4fa2a408ca26aa177f65c237e7b72bb174ef63b12b5f6",
+    "Tests/GMASNativeSpawnLab/Source/GMASNativeSpawnLabRuntime/Private/GMASNativeSpawnLabRuntime.cpp": "d73750a79cf5a97a086f21553e08680680ae54e5ec4d87a451200d92ed649b5b",
+    "Tests/GMASNativeSpawnLab/Source/GMASNativeSpawnLabRuntime/Private/GMASNativeSpawnLabTag.cpp": "a7e37131820fcdd9da1c7337a1c1cd02d3d9d126a755bc8d0272e5ef21255084"
+  },
+  "earlier_attempts": "Preserved in archive. Runs 1-4 are invalid harness attempts: editor-module native tag ensure (1), missing config/imported tag (2-3), and new runtime tag source not discovered by UBT until gather/build rules refresh (4). Run 5 passed both native scenarios. Final run revalidated the standalone lab plugin and ability unit regressions without errors or ensures."
+}

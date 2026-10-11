@@ -1,0 +1,35 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "GMAS Native Spawn Lab (TEST ONLY)",
+  "Description": "Native PIE startup clock regression; exclude from release builds.",
+  "EnabledByDefault": false,
+  "CanContainContent": false,
+  "Modules": [
+    {
+      "Name": "GMASNativeSpawnLabRuntime",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    },
+    {
+      "Name": "GMASNativeSpawnLabEditor",
+      "Type": "Editor",
+      "LoadingPhase": "PostEngineInit"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "GMC",
+      "Enabled": true
+    },
+    {
+      "Name": "GMCMotion",
+      "Enabled": true
+    },
+    {
+      "Name": "GMCAbilitySystem",
+      "Enabled": true
+    }
+  ]
+}

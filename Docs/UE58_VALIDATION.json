@@ -73,5 +73,11 @@
     "full-demo-tests-startup-collision-final.log": {
       "sha256": "aaac512486a93a114db3f14afd5baa3c88d4ca12ee10b228e7f9c6b231a5fcaa"
     }
+  },
+  "native_spawn_check": {
+    "status": "Passed",
+    "record": "UE58_NATIVE_SPAWN_VALIDATION.json",
+    "native_cases": 2,
+    "additional_runtime_fixes": false
   }
 }

@@ -1,0 +1,2 @@
+# Preserve the native fixture's sealed source bytes across checkout line endings.
+GMASNativeSpawnLab/** -text whitespace=cr-at-eol,-blank-at-eof
