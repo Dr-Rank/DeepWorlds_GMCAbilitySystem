@@ -704,6 +704,8 @@ bool UGMC_AbilitySystemComponent::TryActivateAbility(const TSubclassOf<UGMCAbili
 {
 
 	if (ActivatedAbility == nullptr) return false;
+	// Direct callers receive a refusal and may retry; QueueAbility retains early input.
+	if (ShouldWaitForStartupClock()) return false;
 
 	int AbilityID;
 	if (ForcedAbilityID != 0)
@@ -823,9 +825,53 @@ bool UGMC_AbilitySystemComponent::TryActivateAbility(const TSubclassOf<UGMCAbili
 	return true;
 }
 
+bool UGMC_AbilitySystemComponent::ShouldWaitForStartupClock() const
+{
+	return GetOwner() != nullptr && !bStartupPredictionClockReady;
+}
+
+void UGMC_AbilitySystemComponent::UpdateStartupPredictionClock(double Timestamp)
+{
+	ActionTimer = Timestamp;
+	if (bStartupPredictionClockReady || !GMCMovementComponent || !FMath::IsFinite(Timestamp) || Timestamp <= 0.0)
+	{
+		return;
+	}
+	bStartupPredictionClockReady = true;
+	// Move out before dispatch: activation can re-enter QueueAbility.
+	TArray<FInstancedStruct> Requests = MoveTemp(StartupAbilityRequests);
+	TMap<FGameplayTag, bool> ConcurrencyChecks = MoveTemp(StartupConcurrencyChecks);
+	StartupAbilityRequests.Reset();
+	StartupConcurrencyChecks.Reset();
+	for (const auto& Request : Requests)
+	{
+		const auto& Data = Request.Get<FGMASBoundQueueV2AbilityActivationOperation>();
+		QueueAbility(Data.InputTag, Data.InputAction, ConcurrencyChecks.FindRef(Data.InputTag));
+	}
+}
+
 void UGMC_AbilitySystemComponent::QueueAbility(FGameplayTag InputTag, const UInputAction* InputAction, bool bPreventConcurrentActivation)
 {
 	if (GetOwnerRole() != ROLE_AutonomousProxy && GetOwnerRole() != ROLE_Authority) return;
+	if (ShouldWaitForStartupClock())
+	{
+		// Coalesce held input before spawn initialization: no IDs, cooldowns or instances yet.
+		if (InputTag.IsValid())
+		{
+			FGMASBoundQueueV2AbilityActivationOperation Request;
+			Request.InputTag = InputTag;
+			Request.InputAction = InputAction;
+			const int32 Existing = StartupAbilityRequests.IndexOfByPredicate([&](const FInstancedStruct& Pending)
+			{ return Pending.Get<FGMASBoundQueueV2AbilityActivationOperation>().InputTag == InputTag; });
+			FInstancedStruct Data = FInstancedStruct::Make<FGMASBoundQueueV2AbilityActivationOperation>(Request);
+			if (Existing == INDEX_NONE) StartupAbilityRequests.Add(MoveTemp(Data));
+			else StartupAbilityRequests[Existing] = MoveTemp(Data);
+			StartupConcurrencyChecks.FindOrAdd(InputTag) = bPreventConcurrentActivation;
+		}
+		return;
+	}
+
+
 
 	// Detect client-auth path before standard routing.
 	TArray<TSubclassOf<UGMCAbility>> Candidates = GetGrantedAbilitiesByTag(InputTag);
@@ -1072,7 +1118,8 @@ void UGMC_AbilitySystemComponent::GenPredictionTick(float DeltaTime)
 	TRACE_CPUPROFILER_EVENT_SCOPE(UGMC_AbilitySystemComponent::GenPredictionTick)
 
 	bJustTeleported = false;
-	ActionTimer = GMCMovementComponent->GetMoveTimestamp();
+	if (!GMCMovementComponent) return;
+	UpdateStartupPredictionClock(GMCMovementComponent->GetMoveTimestamp());
 
 	// Replay-burst diagnostic — sticky flag, consumed by GenAncillaryTick.
 	// Set early so even short-circuiting paths below still record the observation.

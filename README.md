@@ -1,19 +1,33 @@
 # GMAS fork for UE 5.8
 
 This fork incorporates DeepWorlds' `dev` branch through
-[`946dac57`](https://github.com/DeepWorldsSA/DeepWorlds_GMCAbilitySystem/commit/946dac57ea7fae0d9b2d2276efd1c63a83afba3f).
-The source from the four original fork patches is now covered by upstream. The refresh
-keeps the fork's history and documentation; the runtime and editor source match that upstream
-revision. Upstream now includes version-aware InstancedStruct headers, and the merged source
-built successfully with Unreal Engine 5.8 in GMCv2_Demo on 11 October 2026.
+[`946dac57`](https://github.com/DeepWorldsSA/DeepWorlds_GMCAbilitySystem/commit/946dac57ea7fae0d9b2d2276efd1c63a83afba3f),
+using upstream's current queue and operation-consumption implementations. It builds with Unreal Engine 5.8.
 
-The refresh also brings upstream's operation-consumption and cache fixes, effect/tag safety,
-task heartbeat changes, external attribute values, percentage-of-base modifiers, Blueprint
-ability-cost access and modifier editor support. See the upstream commit history for details.
+The refresh brings operation-consumption and cache fixes, effect/tag safety, task heartbeat changes,
+external attribute values, percentage-of-base modifiers, Blueprint ability-cost access and modifier editor support.
+The fork also includes the spawn-clock guard described below and corrected automation fixtures from CLEAR,
+extended to the remaining attribute stress tests. Production clamp defaults and cooldown behavior are unchanged.
 
-**Qualification is still in progress.** In GMCv2_Demo, the complete editor suite ran 1,287 tests: GMAS passed 275 of 425; Traverse Anywhere passed 860 of 861; one additional engine test passed. The 150 GMAS failures and single traversal failure were already present before the refresh. All 19 focused GMC/first-person bridge checks passed. The failing collision group also passes all 13 cases when run alone, so full-suite interference is being investigated. Old attribute fixtures assume an unset default clamp; current clamp flags default to enabled. Three cooldown fixtures expect DeltaTime countdowns, while current cooldowns use absolute movement-clock expiry. These diagnoses do not turn the full run into a pass. See [the validation record](Docs/UE58_VALIDATION.json) for the failed test names. A successful build does not certify native multiplayer, visible contact or packaged gameplay. Back up and test your own project.
-The old patch and known-issue documents below are retained as historical evidence, not a
-current assertion that upstream is missing those four fixes.
+**Editor regression result: 1,290/1,290 passed in GMCv2_Demo on 11 October 2026.**
+GMAS passed 428/428, Traverse Anywhere passed 861/861 and one additional engine test passed.
+Before correction, GMCLocomotion reproduced 150 failing GMAS tests and CLEAR reproduced 119.
+Most failures came from arithmetic fixtures inheriting an active [0, 0] clamp; three cooldown tests
+advanced DeltaTime instead of the prediction clock. The Traversal collision failure came from preview
+geometry being queried before its physics body existed. The corrected fixture finishes mesh compilation
+and creates collision before tracing; traversal gameplay behavior is unchanged.
+
+**Immediate activation after spawn:** `QueueAbility` retains early requests until the first finite,
+positive GMC prediction timestamp. Repeated held input for the same tag is coalesced while preserving
+request order. No activation IDs, cooldowns or ability instances are created during that wait.
+Direct `TryActivateAbility` calls return `false` before readiness, so callers should retry or use `QueueAbility`.
+Actor-owned startup regression tests and cooldown replay checks pass. A native listen-server/client
+first-spawn check is still required before treating that network edge case as fully qualified.
+
+The editor results do not certify Traverse Anywhere's unfinished GMC setup pipeline, native multiplayer,
+visible contact or packaged gameplay. Back up and test your own project.
+See [the verification record](Docs/UE58_VALIDATION.json) and [preserved pre-fix failures](Docs/UE58_VALIDATION_BEFORE_FIXTURES.json).
+The original patch and issue documents remain historical evidence:
 
 - [Original fork changes](Docs/FORK_CHANGES.md)
 - [Recorded known issues](Docs/KNOWN_ISSUES.md)
